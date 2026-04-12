@@ -1,110 +1,103 @@
-# Modelado-Simulacion
+# Laboratorio de Modelado y Simulacion de Metodos Numericos
 
-Pequena aplicacion en Python para simular y resolver modelos matematicos desde consola.
+Repositorio Python orientado a metodos numericos, modelado y simulacion con un enfoque doble:
 
-## Metodos incluidos
+- academico: estudiar, comparar y visualizar metodos numericos
+- tecnico: reutilizar el motor para problemas aplicados de ciencia, ingenieria y ciencia de datos
 
-### 1) Busqueda de raices (equilibrios)
-- **Biseccion** (con chequeo de cambio de signo en \[a,b\]).
-- **Punto Fijo** \(x = g(x)\).
-- **Newton-Raphson** (requiere `f(x)` y `f'(x)`).
+El proyecto evoluciono desde una base monolitica hacia una estructura modular con separacion entre:
 
-### 2) Modelado de datos discretos
-- **Interpolacion de Lagrange**.
-- **Derivacion numerica por diferencia central**.
+- `core/`: motor numerico y utilidades compartidas
+- `simuladores/`: interfaces de consola, Streamlit y helpers para notebooks
+- `visualizacion/`: graficos reutilizables
+- `casos/`: ejercicios de TP y ejemplos aplicados
+- `docs/`: arquitectura, metodos y guias de uso
+- `tests/`: pruebas basicas con `pytest`
 
-### 3) Aceleracion de convergencia
-- **Delta-Cuadrado de Aitken** (usa los ultimos 3 terminos de una secuencia).
+## Metodos implementados
 
-### 4) Simulacion de evolucion (EDO)
-- **Runge-Kutta de orden 4 (RK4)** para `y' = f(t, y)`.
+### Busqueda de raices
+- Biseccion
+- Punto fijo
+- Newton-Raphson
+- Aceleracion de Aitken
 
-### 5) Modelo discreto adicional
-- **Crecimiento logistico**:
-  `x_(n+1) = r * x_n * (1 - x_n / K)`.
+### Interpolacion y derivacion
+- Interpolacion de Lagrange
+- Diferencia central
 
-### 6) Integracion numerica (Newton-Cotes y Gauss)
-- **Trapecio compuesto**
-- **Simpson 1/3 compuesto**
-- **Simpson 3/8 compuesto**
-- **Rectangulo punto medio compuesto**
-- **Cuadratura de Gauss-Legendre** (2 a 5 puntos)
+### Integracion numerica
+- Trapecio compuesto
+- Simpson 1/3 compuesto
+- Simpson 3/8 compuesto
+- Rectangulo medio compuesto
+- Cuadratura de Gauss-Legendre
 
-## Requisitos
+### Simulacion estocastica
+- Monte Carlo para integrales
+- Monte Carlo geometrico para estimacion de pi
 
-- Python 3.10 o superior
+### EDO
+- Euler
+- Heun
+- Runge-Kutta de orden 4
+
+### Sistemas lineales
+- Eliminacion de Gauss con pivoteo parcial
+
+## Instalacion
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+```
 
 ## Ejecucion
 
-Desde la raiz del proyecto:
+### Consola
 
 ```bash
-python3 app.py
+python app.py
 ```
 
-## Version web interactiva (con graficos)
-
-Tambien podes usar una interfaz web con graficos interactivos (HTML) usando Streamlit + Plotly:
+### Streamlit
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m streamlit run web_app.py
+streamlit run web_app.py
 ```
 
-La web incluye:
-- graficos de convergencia por iteracion (Biseccion, Punto Fijo, Newton, Aitken),
-- curva de la funcion en intervalos configurables,
-- interpolacion de Lagrange con nodos + curva interpolante,
-- trayectoria RK4 y modelo logistico,
-- comparacion visual de metodos de integracion numerica,
-- panel de **Integracion Monte Carlo** con estimacion e intervalo de confianza,
-- pagina "Chuleta / Atajos" con expresiones listas para copiar y pegar,
-- selector global de modo angular (**Radianes** o **Grados**) para funciones trigonometricas.
+## Estructura del proyecto
 
-## Interfaz web interactiva (Streamlit)
-
-Tambien podes usar una interfaz web con formularios, tablas y seleccion de ejercicios:
-
-```bash
-python3 -m pip install -r requirements.txt
-streamlit run web_app.py --server.port 8501 --server.address 0.0.0.0
+```text
+core/
+  metodos_numericos/
+  utils/
+simuladores/
+visualizacion/
+casos/
+docs/
+tests/
+app.py
+web_app.py
+modelos.py
 ```
 
-Luego abri en el navegador:
+## Compatibilidad
 
-`http://localhost:8501`
+`modelos.py` se conserva como fachada de compatibilidad para no romper el uso anterior del repositorio. La implementacion real vive ahora en `core/`.
 
-## Estructura
+## Stack tecnologico
 
-- `app.py`: interfaz de consola y menu interactivo
-- `modelos.py`: implementacion del motor numerico
-- `web_app.py`: interfaz web interactiva con Streamlit
-- `requirements.txt`: dependencias para la app web
+- Python 3.10+
+- Streamlit
+- Plotly
+- Pandas
+- SymPy
+- Pytest
 
-## Modo "Ejercicios del PDF"
+## Documentacion adicional
 
-La app incluye una opcion de menu para resolver ejercicios tipo del trabajo practico
-con entradas ya preparadas.
-
-Incluye presets para:
-- Biseccion (varios ejercicios con funcion e intervalo cargados).
-- Punto fijo (casos con g(x) y x0 sugeridos).
-- Newton-Raphson (f, f' y semilla).
-- Aitken (aplicado a secuencias de punto fijo).
-- Lagrange (nodos y punto a evaluar).
-- Diferencias centrales (funcion, punto y h).
-- RK4 para EDOs de valor inicial.
-- Integracion numerica para ejercicios de Newton-Cotes y Gauss.
-
-Esto permite elegir un ejercicio y cambiar solo tolerancia/iteraciones cuando haga falta.
-
-## Notas de uso
-
-- Las expresiones matematicas admiten funciones comunes:
-  `sin`, `cos`, `tan`, `exp`, `log`, `sqrt`, `abs`, etc.
-- Variables esperadas por metodo:
-  - Raices e interpolacion: `x`
-  - RK4: `t` y `y`
-- En Lagrange, los valores de `x` de los puntos deben ser distintos.
+- [Arquitectura](docs/arquitectura.md)
+- [Metodos](docs/metodos.md)
+- [Uso](docs/uso.md)
