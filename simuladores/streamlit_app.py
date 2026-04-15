@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from casos.ejemplos_aplicados import APPLIED_CASES
@@ -37,18 +38,157 @@ def _mostrar_dataframe(registros: list[dict]) -> None:
     st.dataframe(pd.DataFrame(registros), use_container_width=True)
 
 
-def _panel_casos() -> None:
-    st.subheader("Casos de estudio")
-    st.write("Ejemplos listos para usar en trabajos practicos y escenarios aplicados.")
-    st.json(
-        {
-            "raices": list(ROOT_CASES.keys()),
-            "interpolacion": list(INTERPOLATION_CASES.keys()),
-            "integracion": list(INTEGRATION_CASES.keys()),
-            "edo": list(ODE_CASES.keys()),
-            "aplicados": list(APPLIED_CASES.keys()),
-        }
+def _resolver_edo_por_metodo(
+    metodo: str,
+    ode_expr: str,
+    t0: float,
+    y0: float,
+    h: float,
+    pasos: int,
+    solucion_exacta: str | None,
+):
+    if metodo == "Euler":
+        return euler(ode_expr, t0, y0, h, pasos, solucion_exacta)
+    if metodo == "Heun":
+        return heun(ode_expr, t0, y0, h, pasos, solucion_exacta)
+    return runge_kutta_4(ode_expr, t0, y0, h, pasos, solucion_exacta)
+
+
+def _grafico_hornalla(resultado, temperatura_ambiente: float) -> go.Figure:
+    tiempos = [paso.t for paso in resultado.pasos]
+    temperaturas = [paso.y for paso in resultado.pasos]
+    distancia_ambiente = [abs(temp - temperatura_ambiente) for temp in temperaturas]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=tiempos,
+            y=temperaturas,
+            mode="lines+markers",
+            name="Temperatura de la olla",
+            line={"color": "#e74c3c", "width": 3},
+            marker={"size": 7},
+        )
     )
+    fig.add_trace(
+        go.Scatter(
+            x=tiempos,
+            y=[temperatura_ambiente for _ in tiempos],
+            mode="lines",
+            name="Temperatura ambiente",
+            line={"color": "#2ecc71", "width": 2, "dash": "dash"},
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=tiempos,
+            y=distancia_ambiente,
+            mode="lines+markers",
+            name="Distancia al ambiente",
+            line={"color": "#3498db", "width": 2},
+            marker={"size": 6},
+            yaxis="y2",
+        )
+    )
+    fig.update_layout(
+        title="Propagación del calor de la hornalla",
+        xaxis_title="Tiempo (minutos)",
+        yaxis_title="Temperatura (°C)",
+        yaxis2={
+            "title": "Distancia al ambiente (°C)",
+            "overlaying": "y",
+            "side": "right",
+            "showgrid": False,
+        },
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+        margin={"l": 40, "r": 40, "t": 70, "b": 40},
+        template="plotly_white",
+    )
+    return fig
+
+
+def _panel_casos() -> None:
+    st.subheader("Caso práctico integrado")
+    st.write("Simulación de propagación del calor de una hornalla en una olla, explicada de forma simple.")
+    st.markdown("**Idea simple:** la temperatura de la olla se va acercando a la del ambiente con el tiempo.")
+    st.latex(r"T'(t) = -k\,(T - T_{amb})")
+
+    caso = APPLIED_CASES["ingenieria_enfriamiento"]
+    p = caso["parametros"]
+
+    c1, c2 = st.columns(2)
+    with c1:
+        metodo = st.selectbox("Método numérico", ["Euler", "Heun", "RK4"], index=1)
+        temperatura_inicial = st.number_input(
+            "Temperatura inicial de la olla (°C)",
+            value=float(p["y0"]),
+            step=1.0,
+        )
+        temperatura_ambiente = st.number_input(
+            "Temperatura ambiente (°C)",
+            value=float(p["temperatura_ambiente"]),
+            step=1.0,
+        )
+    with c2:
+        k = st.number_input("Velocidad de intercambio (k)", value=float(p["k"]), min_value=0.01, step=0.05)
+        h = st.number_input("Paso de tiempo (min)", value=float(p["h"]), min_value=0.01, step=0.1, format="%.4f")
+        pasos = st.number_input("Cantidad de pasos", value=int(p["pasos"]), min_value=1, step=1)
+
+    if st.button("Simular caso de hornalla", use_container_width=True):
+        ode_expr = f"-{k}*(y-{temperatura_ambiente})"
+        exacta_expr = f"{temperatura_ambiente}+({temperatura_inicial}-{temperatura_ambiente})*exp(-{k}*t)"
+        resultado = _resolver_edo_por_metodo(
+            metodo,
+            ode_expr,
+            float(p["t0"]),
+            float(temperatura_inicial),
+            float(h),
+            int(pasos),
+            exacta_expr,
+        )
+
+        st.success("Simulación completada.")
+
+        inicio = resultado.pasos[0].y
+        fin = resultado.pasos[-1].y
+        distancia_final = abs(fin - temperatura_ambiente)
+        direccion = "se enfrió" if inicio > temperatura_ambiente else "se calentó"
+
+        st.info(
+            f"La olla empezó en {inicio:.2f} °C y {direccion} hasta {fin:.2f} °C. "
+            f"Al final quedó a {distancia_final:.2f} °C de la temperatura ambiente."
+        )
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Temperatura inicial", f"{inicio:.2f} °C")
+        m2.metric("Temperatura final", f"{fin:.2f} °C")
+        m3.metric("Distancia al ambiente", f"{distancia_final:.2f} °C")
+
+        st.plotly_chart(_grafico_hornalla(resultado, float(temperatura_ambiente)), use_container_width=True)
+
+        tabla = pd.DataFrame(
+            [
+                {
+                    "Paso": paso.paso,
+                    "Tiempo (min)": paso.t,
+                    "Temperatura (°C)": paso.y,
+                    "Diferencia con ambiente (°C)": abs(paso.y - temperatura_ambiente),
+                }
+                for paso in resultado.pasos
+            ]
+        )
+        st.dataframe(tabla, use_container_width=True)
+
+    with st.expander("Ver otros casos disponibles"):
+        st.json(
+            {
+                "raices": list(ROOT_CASES.keys()),
+                "interpolacion": list(INTERPOLATION_CASES.keys()),
+                "integracion": list(INTEGRATION_CASES.keys()),
+                "edo": list(ODE_CASES.keys()),
+                "aplicados": list(APPLIED_CASES.keys()),
+            }
+        )
 
 
 def _panel_raices() -> None:
@@ -161,12 +301,7 @@ def _panel_edo() -> None:
     h = st.number_input("h", value=0.1, format="%.10f")
     pasos = st.number_input("pasos", value=10, min_value=1)
     if st.button("Resolver EDO", use_container_width=True):
-        if metodo == "Euler":
-            resultado = euler(ode_expr, t0, y0, float(h), int(pasos), solucion_exacta or None)
-        elif metodo == "Heun":
-            resultado = heun(ode_expr, t0, y0, float(h), int(pasos), solucion_exacta or None)
-        else:
-            resultado = runge_kutta_4(ode_expr, t0, y0, float(h), int(pasos), solucion_exacta or None)
+        resultado = _resolver_edo_por_metodo(metodo, ode_expr, t0, y0, float(h), int(pasos), solucion_exacta or None)
         st.success(resultado.mensaje)
         _mostrar_dataframe([asdict(paso) for paso in resultado.pasos])
         st.plotly_chart(grafico_trayectoria_edo(resultado), use_container_width=True)
