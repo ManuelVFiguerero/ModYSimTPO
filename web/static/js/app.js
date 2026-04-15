@@ -666,6 +666,12 @@
     // ==================== CASO PRÁCTICO INTEGRADO ====================
 
     const CASE_CHARTS = {};
+    let CASE_RENDER_CONTEXT = {
+        palette: 'default',
+        showContours: true,
+        autoRotate3d: true,
+        contourBands: 12,
+    };
 
     function caseAppNum(res, ...keys) {
         const app = res?.aplicacion || {};
@@ -698,6 +704,29 @@
         return CASE_CHARTS[id];
     }
 
+    function getCasePalette(name = 'default') {
+        const palettes = {
+            default: ['#1e3a5f', '#0d9488', '#22c55e', '#f59e0b', '#ef4444', '#fbbf24'],
+            fire: ['#1f2937', '#b45309', '#f97316', '#ef4444', '#dc2626', '#facc15'],
+            thermal: ['#0b132b', '#1c2541', '#3a506b', '#5bc0be', '#f6d55c', '#ed553b'],
+            icefire: ['#1e40af', '#2563eb', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444'],
+        };
+        return palettes[name] || palettes.default;
+    }
+
+    function simplifyHeatmapGrid(data = [], bands = 12) {
+        if (!Array.isArray(data) || data.length === 0 || bands < 2) return data;
+        const values = data.map((p) => p[2]);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = Math.max(max - min, 1e-9);
+        return data.map((p) => {
+            const normalized = (p[2] - min) / span;
+            const bucket = Math.round(normalized * (bands - 1)) / (bands - 1);
+            return [p[0], p[1], min + bucket * span];
+        });
+    }
+
     function buildCaseKpis(res) {
         const rf = caseAppNum(res, 'radio_hornalla_m');
         const rfCm = rf * 100.0;
@@ -706,6 +735,7 @@
         const cobertura = Math.max(0, Math.min(100, areaRatio * 100));
         const potencia = caseAppNum(res, 'potencia_hornalla_kw', 'potencia_hornalla');
         const tempSegura = caseAppNum(res, 'temperatura_segura_c');
+        const rendimiento3d = res.visualizacion?.heatmap_3d ? 'Activa' : 'No disponible';
         const kpis = [
             {
                 title: 'Zona segura',
@@ -731,6 +761,11 @@
                 title: 'Latencia total',
                 value: `${res.caso.runtime_ms.toFixed(1)} ms`,
                 note: 'corrida integrada',
+            },
+            {
+                title: 'Vista 3D',
+                value: rendimiento3d,
+                note: 'mapa térmico espacial',
             },
         ];
         $('#caso-kpis').innerHTML = kpis.map(k => `
@@ -799,19 +834,29 @@
         ].join('');
     }
 
-    function renderCaseCharts(res) {
+    function renderCaseCharts(res, options = {}) {
+        const ui = {
+            palette: options.palette || CASE_RENDER_CONTEXT.palette || 'default',
+            showContours: options.showContours ?? CASE_RENDER_CONTEXT.showContours ?? true,
+            autoRotate3d: options.autoRotate3d ?? CASE_RENDER_CONTEXT.autoRotate3d ?? true,
+            contourBands: options.contourBands ?? CASE_RENDER_CONTEXT.contourBands ?? 12,
+        };
+        CASE_RENDER_CONTEXT = { ...CASE_RENDER_CONTEXT, ...ui };
+
         const chartRaices = initCaseChart('caso-chart-raices');
         const chartInteg = initCaseChart('caso-chart-integracion');
         const chartEdo = initCaseChart('caso-chart-edo');
         const chartMc = initCaseChart('caso-chart-mc');
         const chartAnim = initCaseChart('caso-chart-anim');
+        const chart3d = initCaseChart('caso-chart-3d');
 
         if (!chartRaices || !chartInteg || !chartEdo || !chartMc || !chartAnim) {
-            throw new Error('No se pudieron inicializar los charts ECharts.');
+            throw new Error('No se pudieron inicializar los gráficos principales.');
         }
 
         const surfaceRadius = caseAppNum(res, 'radio_superficie_m', 'radio_disco_m');
         const rHornalla = caseAppNum(res, 'radio_hornalla_m');
+        const palette = getCasePalette(ui.palette);
         const ringData = [];
         const ringSteps = 96;
         for (let i = 0; i <= ringSteps; i += 1) {
@@ -861,12 +906,14 @@
                 right: 8,
                 top: 'middle',
                 textStyle: { color: '#cbd5e1' },
-                inRange: { color: ['#1e3a5f', '#0d9488', '#22c55e', '#f59e0b', '#ef4444', '#fbbf24'] },
+                inRange: { color: palette },
             },
             series: [{
                 name: 'Mapa térmico',
                 type: 'heatmap',
-                data: res.visualizacion.heatmap_estatico,
+                data: ui.showContours
+                    ? simplifyHeatmapGrid(res.visualizacion.heatmap_estatico, ui.contourBands)
+                    : res.visualizacion.heatmap_estatico,
                 blurSize: 18,
                 pointSize: 5,
                 itemStyle: { opacity: 0.42 },
@@ -1101,7 +1148,7 @@
                     top: 'middle',
                     calculable: true,
                     textStyle: { color: '#cbd5e1' },
-                    inRange: { color: ['#1e3a5f', '#0d9488', '#22c55e', '#f59e0b', '#ef4444', '#fbbf24'] },
+                    inRange: { color: palette },
                 },
                 grid: { left: 56, right: 24, top: 32, bottom: 72 },
                 xAxis: {
@@ -1134,12 +1181,99 @@
                 },
                 series: [{
                     type: 'heatmap',
-                    data: f.data,
+                    data: ui.showContours ? simplifyHeatmapGrid(f.data, ui.contourBands) : f.data,
                     blurSize: 18,
                     pointSize: 5,
                 }],
             })),
         });
+
+        // ---- Superficie térmica 3D ----
+        const has3D = !!(chart3d && typeof echarts === 'object' && (echarts as any).graphic && Array.isArray(res.visualizacion?.heatmap_3d));
+        if (has3D) {
+            const points3d = res.visualizacion.heatmap_3d;
+            const xs3 = points3d.map((p) => p[0]);
+            const ys3 = points3d.map((p) => p[1]);
+            const zs3 = points3d.map((p) => p[2]);
+            const minX = Math.min(...xs3);
+            const maxX = Math.max(...xs3);
+            const minY = Math.min(...ys3);
+            const maxY = Math.max(...ys3);
+            const minZ = Math.min(...zs3);
+            const maxZ = Math.max(...zs3);
+
+            chart3d.setOption({
+                backgroundColor: 'transparent',
+                tooltip: {
+                    formatter: (p) => `x=${p.value[0].toFixed(3)} m<br/>y=${p.value[1].toFixed(3)} m<br/>T=${p.value[2].toFixed(1)} °C`,
+                },
+                visualMap: {
+                    min: minZ,
+                    max: maxZ,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: 8,
+                    textStyle: { color: '#cbd5e1' },
+                    inRange: { color: palette },
+                },
+                xAxis3D: {
+                    type: 'value',
+                    min: minX,
+                    max: maxX,
+                    name: 'x (m)',
+                    axisLabel: { color: '#94a3b8' },
+                    axisLine: { lineStyle: { color: '#475569' } },
+                },
+                yAxis3D: {
+                    type: 'value',
+                    min: minY,
+                    max: maxY,
+                    name: 'y (m)',
+                    axisLabel: { color: '#94a3b8' },
+                    axisLine: { lineStyle: { color: '#475569' } },
+                },
+                zAxis3D: {
+                    type: 'value',
+                    min: minZ,
+                    max: maxZ,
+                    name: 'Temperatura (°C)',
+                    axisLabel: { color: '#94a3b8' },
+                    axisLine: { lineStyle: { color: '#475569' } },
+                },
+                grid3D: {
+                    boxWidth: 120,
+                    boxDepth: 120,
+                    boxHeight: 70,
+                    viewControl: {
+                        alpha: 28,
+                        beta: 35,
+                        distance: 140,
+                        autoRotate: ui.autoRotate3d,
+                        autoRotateSpeed: 6,
+                    },
+                    light: {
+                        main: { intensity: 1.0, shadow: false },
+                        ambient: { intensity: 0.45 },
+                    },
+                },
+                series: [{
+                    type: 'scatter3D',
+                    data: points3d,
+                    symbolSize: 4.5,
+                    itemStyle: { opacity: 0.95 },
+                }],
+            });
+            const status3d = document.getElementById('caso-3d-status');
+            if (status3d) {
+                status3d.textContent = 'Vista 3D activa.';
+            }
+        } else {
+            const status3d = document.getElementById('caso-3d-status');
+            if (status3d) {
+                status3d.textContent = 'La vista 3D no está disponible en este navegador/cdn.';
+            }
+        }
 
         window.requestAnimationFrame(() => {
             Object.values(CASE_CHARTS).forEach(ch => ch && ch.resize());
@@ -1270,6 +1404,28 @@
         });
     }
 
+    function bindCaseAdvancedControls() {
+        const palette = document.getElementById('caso-palette');
+        const contours = document.getElementById('caso-contours');
+        const bands = document.getElementById('caso-contour-bands');
+        const autoRotate = document.getElementById('caso-auto-rotate');
+
+        const updateContext = () => {
+            CASE_RENDER_CONTEXT = {
+                ...CASE_RENDER_CONTEXT,
+                palette: palette?.value || 'default',
+                showContours: !!contours?.checked,
+                contourBands: Number.parseInt(bands?.value || '12', 10),
+                autoRotate3d: !!autoRotate?.checked,
+            };
+        };
+
+        [palette, contours, bands, autoRotate].forEach((el) => {
+            if (el) el.addEventListener('change', updateContext);
+        });
+        updateContext();
+    }
+
     on('#btn-caso-practico', 'click', async () => {
         const btn = $('#btn-caso-practico');
         if (!btn) return;
@@ -1342,7 +1498,7 @@
             ];
             $('#caso-resumen').innerHTML = renderTable(resumenRows, ['bloque', 'valor', 'detalle']);
 
-            renderCaseCharts(res);
+            renderCaseCharts(res, CASE_RENDER_CONTEXT);
             buildCaseConclusions(res);
 
             toast('Caso práctico ejecutado ✓', 'success');
@@ -1368,6 +1524,7 @@
             TheoryPanel.update('raices');
         }
         bindCaseHelpPopups();
+        bindCaseAdvancedControls();
     });
 
 })();

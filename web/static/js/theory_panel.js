@@ -167,6 +167,10 @@ const TheoryPanel = (() => {
             <h4>🔥 Caso práctico: calor de una hornalla (explicado fácil)</h4>
             <p>Este panel muestra algo cotidiano: cómo se reparte el calor alrededor de una hornalla.</p>
             <p>Podés cambiar valores como tamaño de hornalla, potencia o temperatura ambiente y ver al instante qué pasa.</p>
+            <div class="theory-note">
+                <strong>Tip visual:</strong> en cada gráfico tenés una flechita ↗ para abrir una explicación corta de lo que estás viendo.
+                Además podés activar la vista 3D, cambiar paletas y probar modo “contornos”.
+            </div>
 
             <div class="theory-step">
                 <span class="step-badge">1</span>

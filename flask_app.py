@@ -372,6 +372,7 @@ def api_caso_practico_integrado():
         rapidez_disipacion = _parse_num(d.get("rapidez_disipacion", 3.2))
         perdida_lineal = _parse_num(d.get("perdida_lineal", 10.0))
         ruido_sensor = _parse_num(d.get("ruido_sensor", 4.0))
+        escala_altura_3d = _parse_num(d.get("escala_altura_3d", 1.0))
         temp_objetivo_sarten = _parse_num(d.get("temp_objetivo_sarten_c", 190.0))
         k_sarten = _parse_num(d.get("k_sarten", 0.7))
         if mc_n < 1000:
@@ -394,6 +395,8 @@ def api_caso_practico_integrado():
             raise ValueError("La variación de sensores no puede ser negativa.")
         if k_sarten <= 0:
             raise ValueError("k_sarten debe ser mayor a 0.")
+        if escala_altura_3d <= 0:
+            raise ValueError("La escala de altura 3D debe ser mayor a 0.")
 
         t_ini = time.perf_counter()
         rng = random.Random(mc_seed)
@@ -496,6 +499,18 @@ def api_caso_practico_integrado():
                 t = _temp_radial(r)
                 heatmap_estatico.append([x, y, t])
 
+        # Superficie 3D: grilla z = T(x,y)
+        temp_min = ambiente
+        temp_max = max(p[2] for p in heatmap_estatico) if heatmap_estatico else ambiente + q0
+        delta_temp = max(temp_max - temp_min, 1e-9)
+        surface_3d = []
+        for x in xs:
+            for y in ys:
+                r = math.sqrt(x * x + y * y)
+                t = _temp_radial(r)
+                z = (t - temp_min) * escala_altura_3d
+                surface_3d.append([x, y, z, t])
+
         # Animacion temporal: encendido progresivo de la hornalla
         beta = 0.9
         tiempos_anim = [10.0 * k / 15.0 for k in range(16)]
@@ -536,6 +551,7 @@ def api_caso_practico_integrado():
                     "ruido_sensor": ruido_sensor,
                     "temp_objetivo_sarten_c": temp_objetivo_sarten,
                     "k_sarten": k_sarten,
+                    "escala_altura_3d": escala_altura_3d,
                 },
                 "raices": {
                     "biseccion": {
@@ -626,6 +642,12 @@ def api_caso_practico_integrado():
                     "nube_puntos": nube_puntos,
                     "curva_radial": {"r": rs, "temp": ts},
                     "heatmap_estatico": heatmap_estatico,
+                    "surface_3d": {
+                        "puntos": surface_3d,
+                        "grid_n": grid_n,
+                        "temp_min": temp_min,
+                        "temp_max": temp_max,
+                    },
                     "bounds": {"min": -xs_bound, "max": xs_bound},
                     "heatmap_animado": {
                         "tiempos": tiempos_anim,

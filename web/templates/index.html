@@ -20,6 +20,7 @@
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
     <!-- Apache ECharts para dashboards avanzados -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
 
     <!-- Estilos propios -->
     <link rel="stylesheet" href="/static/css/style.css">
@@ -468,6 +469,22 @@
                         <label for="caso-ruido-sensor">Variación sensores (±°C)</label>
                         <input type="text" id="caso-ruido-sensor" class="input-math" data-keyboard="true" value="4">
                     </div>
+                    <div class="field-group">
+                        <label for="caso-paleta">Paleta visual</label>
+                        <select id="caso-paleta" class="select-premium">
+                            <option value="inferno" selected>Inferno (alto contraste)</option>
+                            <option value="turbo">Turbo (intenso)</option>
+                            <option value="viridis">Viridis (suave)</option>
+                            <option value="cool">Cool (fría)</option>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label for="caso-vista3d">Vista térmica 3D</label>
+                        <select id="caso-vista3d" class="select-premium">
+                            <option value="on" selected>Activada</option>
+                            <option value="off">Desactivada</option>
+                        </select>
+                    </div>
                     <button id="btn-caso-practico" class="btn-execute">
                         <span class="btn-icon">▶</span> Ejecutar Dashboard Integrado
                     </button>
@@ -490,6 +507,8 @@
                         <div id="caso-resumen" class="table-wrapper"></div>
                     </div>
                 </div>
+
+                <div id="caso-premium-ribbon" class="caso-premium-ribbon" style="display:none;"></div>
 
                 <div class="caso-chart-grid">
                     <div class="card">
@@ -550,6 +569,21 @@
                         </div>
                         <div class="card-body">
                             <div id="caso-chart-mc" class="chart-container"></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Superficie térmica 3D</h3>
+                            <div class="chart-help">
+                                <button class="chart-help-btn" type="button" aria-label="Explicación del gráfico" data-help-target="caso-chart-3d">↗</button>
+                                <div class="chart-help-popup">
+                                    Muestra el calor como una “montaña”: altura y color indican temperatura.<br>
+                                    Ideal para ver de un vistazo dónde se concentra más energía.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="caso-chart-3d" class="chart-container"></div>
                         </div>
                     </div>
                     <div class="card">
