@@ -1111,9 +1111,17 @@ body {
     align-content: start;
 }
 
+.caso-controls .field-group.full-width {
+    grid-column: 1 / -1;
+}
+
 .caso-controls .btn-execute {
     grid-column: 1 / -1;
     margin-top: 0.15rem;
+}
+
+.caso-controls .field-group.premium-wide {
+    grid-column: span 2;
 }
 
 /* ---- KPI Cards ---- */
@@ -1158,6 +1166,7 @@ body {
 .kpi-card:nth-child(2) .kpi-value { color: var(--accent-green); }
 .kpi-card:nth-child(3) .kpi-value { color: var(--accent-purple); }
 .kpi-card:nth-child(4) .kpi-value { color: var(--accent-amber); }
+.kpi-card:nth-child(5) .kpi-value { color: var(--accent-pink); }
 
 .kpi-title {
     font-size: 0.72rem;
@@ -1193,6 +1202,56 @@ body {
     position: relative;
     overflow: hidden;
     transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.chart-help-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.chart-help-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    background: rgba(6, 182, 212, 0.12);
+    color: #67e8f9;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.chart-help-btn:hover {
+    transform: translateY(-1px) scale(1.05);
+    background: rgba(6, 182, 212, 0.2);
+    border-color: rgba(6, 182, 212, 0.55);
+}
+
+.chart-help-pop {
+    position: absolute;
+    top: 2rem;
+    right: 0;
+    width: min(300px, 70vw);
+    background: rgba(10, 16, 28, 0.96);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: 10px;
+    padding: 0.65rem 0.75rem;
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.45);
+    z-index: 15;
+    display: none;
+}
+
+.chart-help-pop.open {
+    display: block;
 }
 
 .caso-chart-grid > .card::after {
@@ -1234,6 +1293,85 @@ body {
 
 #caso-chart-anim {
     min-height: 460px;
+}
+
+#caso-chart-3d {
+    min-height: 500px;
+}
+
+#caso-chart-3d {
+    min-height: 500px;
+}
+
+.caso-escena-panel {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.caso-mini-legend {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 0.9rem 1rem;
+    background: linear-gradient(165deg, rgba(15, 23, 42, 0.45), rgba(2, 6, 23, 0.6));
+}
+
+.caso-mini-legend h4 {
+    font-size: 0.78rem;
+    color: #e2e8f0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.caso-mini-legend ul {
+    margin: 0;
+    padding-left: 1rem;
+    color: #cbd5e1;
+    font-size: 0.82rem;
+}
+
+.caso-mini-legend li {
+    margin-bottom: 0.3rem;
+    line-height: 1.4;
+}
+
+.caso-progress {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 0.9rem 1rem;
+    background: linear-gradient(165deg, rgba(15, 23, 42, 0.45), rgba(2, 6, 23, 0.6));
+}
+
+.caso-progress h4 {
+    font-size: 0.78rem;
+    color: #e2e8f0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.55rem;
+}
+
+.caso-progress-track {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.15);
+    overflow: hidden;
+}
+
+.caso-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #06b6d4, #8b5cf6, #f59e0b);
+    transition: width 0.6s ease;
+}
+
+.caso-progress-text {
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    color: #cbd5e1;
 }
 
 /* ---- Theory panel: numbered steps ---- */

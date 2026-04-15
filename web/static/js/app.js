@@ -666,6 +666,33 @@
     // ==================== CASO PRÁCTICO INTEGRADO ====================
 
     const CASE_CHARTS = {};
+    let CASE_RENDER_CONTEXT = {
+        palette: 'default',
+        showContours: true,
+        autoRotate3d: true,
+        contourBands: 12,
+    };
+
+    function caseAppNum(res, ...keys) {
+        const app = res?.aplicacion || {};
+        for (const key of keys) {
+            const value = app[key];
+            if (value !== undefined && value !== null && Number.isFinite(Number(value))) {
+                return Number(value);
+            }
+        }
+        return Number.NaN;
+    }
+
+    function radialTemperature(res, radius) {
+        const app = res?.aplicacion || {};
+        const ambiente = Number(app.ambiente_c ?? 24);
+        const potencia = Number(app.potencia_hornalla ?? app.potencia_hornalla_kw ?? 320);
+        const alpha = Number(app.rapidez_disipacion ?? 3.2);
+        const rHornalla = Number(app.radio_hornalla_m ?? 0.11);
+        if (radius <= rHornalla) return ambiente + potencia;
+        return ambiente + potencia * Math.exp(-alpha * (radius - rHornalla));
+    }
 
     function initCaseChart(id) {
         const el = document.getElementById(id);
@@ -677,27 +704,68 @@
         return CASE_CHARTS[id];
     }
 
+    function getCasePalette(name = 'default') {
+        const palettes = {
+            default: ['#1e3a5f', '#0d9488', '#22c55e', '#f59e0b', '#ef4444', '#fbbf24'],
+            fire: ['#1f2937', '#b45309', '#f97316', '#ef4444', '#dc2626', '#facc15'],
+            thermal: ['#0b132b', '#1c2541', '#3a506b', '#5bc0be', '#f6d55c', '#ed553b'],
+            icefire: ['#1e40af', '#2563eb', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444'],
+        };
+        return palettes[name] || palettes.default;
+    }
+
+    function simplifyHeatmapGrid(data = [], bands = 12) {
+        if (!Array.isArray(data) || data.length === 0 || bands < 2) return data;
+        const values = data.map((p) => p[2]);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = Math.max(max - min, 1e-9);
+        return data.map((p) => {
+            const normalized = (p[2] - min) / span;
+            const bucket = Math.round(normalized * (bands - 1)) / (bands - 1);
+            return [p[0], p[1], min + bucket * span];
+        });
+    }
+
     function buildCaseKpis(res) {
+        const rf = caseAppNum(res, 'radio_hornalla_m');
+        const rfCm = rf * 100.0;
+        const rs = caseAppNum(res, 'radio_superficie_m', 'radio_disco_m');
+        const areaRatio = rs > 0 ? (rf * rf) / (rs * rs) : 0;
+        const cobertura = Math.max(0, Math.min(100, areaRatio * 100));
+        const potencia = caseAppNum(res, 'potencia_hornalla_kw', 'potencia_hornalla');
+        const tempSegura = caseAppNum(res, 'temperatura_segura_c');
+        const rendimiento3d = res.visualizacion?.heatmap_3d ? 'Activa' : 'No disponible';
         const kpis = [
+            {
+                title: 'Zona segura',
+                value: `${res.aplicacion.distancia_segura_m.toFixed(3)} m`,
+                note: `Meta: <= ${tempSegura.toFixed(0)} C`,
+            },
+            {
+                title: 'Potencia',
+                value: `${potencia.toFixed(2)} kW`,
+                note: `radio: ${rfCm.toFixed(1)} cm`,
+            },
+            {
+                title: 'Cobertura',
+                value: `${cobertura.toFixed(1)}%`,
+                note: 'área hornalla/superficie',
+            },
+            {
+                title: 'Sartén final',
+                value: res.edo.metodos.rk4.y_final.toFixed(3),
+                note: 'EDO RK4',
+            },
             {
                 title: 'Latencia total',
                 value: `${res.caso.runtime_ms.toFixed(1)} ms`,
                 note: 'corrida integrada',
             },
             {
-                title: 'Zona segura',
-                value: `${res.aplicacion.distancia_segura_m.toFixed(3)} m`,
-                note: `T <= ${res.aplicacion.temperatura_segura_c.toFixed(0)} C`,
-            },
-            {
-                title: 'Potencia MC',
-                value: res.montecarlo.integral.estimacion.toFixed(2),
-                note: `n=${res.montecarlo.integral.n}`,
-            },
-            {
-                title: 'Sartén final',
-                value: res.edo.metodos.rk4.y_final.toFixed(3),
-                note: 'EDO RK4',
+                title: 'Vista 3D',
+                value: rendimiento3d,
+                note: 'mapa térmico espacial',
             },
         ];
         $('#caso-kpis').innerHTML = kpis.map(k => `
@@ -709,17 +777,96 @@
         `).join('');
     }
 
-    function renderCaseCharts(res) {
+    function buildSimpleCaseStory(res) {
+        const el = $('#caso-historia');
+        if (!el) return;
+        const amb = caseAppNum(res, 'ambiente_c');
+        const seg = caseAppNum(res, 'temperatura_segura_c');
+        const safe = res.aplicacion.distancia_segura_m;
+        const finalT = res.edo.metodos.rk4.y_final;
+        const tempFuente = caseAppNum(res, 'temp_fuente_c', 'temp_objetivo_sarten_c');
+        const finalDelta = Math.abs(finalT - tempFuente);
+        const grad = res.interpolacion.derivada_t3;
+        const ritmo = grad < -40 ? 'rápido' : grad < -20 ? 'moderado' : 'suave';
+
+        el.innerHTML = `
+            <div class="caso-simple-grid">
+                <div class="caso-simple-card">
+                    <h4>Lectura rápida</h4>
+                    <p>
+                        El ambiente está en <strong>${amb.toFixed(1)} °C</strong> y tomamos como límite seguro
+                        <strong>${seg.toFixed(1)} °C</strong>.
+                        La zona segura empieza aproximadamente a <strong>${safe.toFixed(2)} m</strong> del centro.
+                    </p>
+                </div>
+                <div class="caso-simple-card">
+                    <h4>¿Qué muestran los gráficos?</h4>
+                    <p>
+                        Cerca del centro el calor es más alto, y baja al alejarnos.
+                        En este escenario, la caída de temperatura es <strong>${ritmo}</strong>
+                        (gradiente: <strong>${grad.toFixed(2)} °C/m</strong>).
+                    </p>
+                </div>
+                <div class="caso-simple-card">
+                    <h4>Resumen temporal</h4>
+                    <p>
+                        La sartén termina en <strong>${finalT.toFixed(1)} °C</strong>.
+                        Queda a <strong>${finalDelta.toFixed(1)} °C</strong> del valor máximo de la fuente.
+                    </p>
+                </div>
+            </div>
+        `;
+    }
+
+    function buildScenarioBadges(res) {
+        const el = $('#caso-badges');
+        if (!el) return;
+        const buildBadge = (label, value) => `<span class="caso-badge"><strong>${label}:</strong> ${value}</span>`;
+        const radioSuperficie = caseAppNum(res, 'radio_superficie_m', 'radio_disco_m');
+        const radioHornallaCm = caseAppNum(res, 'radio_hornalla_cm', 'radio_hornalla_m') * (res.aplicacion.radio_hornalla_cm ? 1 : 100.0);
+        const tempFuente = caseAppNum(res, 'temp_fuente_c', 'temp_objetivo_sarten_c');
+        el.innerHTML = [
+            buildBadge('Radio hornalla', `${radioHornallaCm.toFixed(1)} cm`),
+            buildBadge('Superficie analizada', `${radioSuperficie.toFixed(2)} m`),
+            buildBadge('Temperatura fuente', `${tempFuente.toFixed(1)} °C`),
+            buildBadge('Ambiente', `${res.aplicacion.ambiente_c.toFixed(1)} °C`),
+            buildBadge('Intensidad', res.caso?.intensidad ?? 'pro'),
+        ].join('');
+    }
+
+    function renderCaseCharts(res, options = {}) {
+        const ui = {
+            palette: options.palette || CASE_RENDER_CONTEXT.palette || 'default',
+            showContours: options.showContours ?? CASE_RENDER_CONTEXT.showContours ?? true,
+            autoRotate3d: options.autoRotate3d ?? CASE_RENDER_CONTEXT.autoRotate3d ?? true,
+            contourBands: options.contourBands ?? CASE_RENDER_CONTEXT.contourBands ?? 12,
+        };
+        CASE_RENDER_CONTEXT = { ...CASE_RENDER_CONTEXT, ...ui };
+
         const chartRaices = initCaseChart('caso-chart-raices');
         const chartInteg = initCaseChart('caso-chart-integracion');
         const chartEdo = initCaseChart('caso-chart-edo');
         const chartMc = initCaseChart('caso-chart-mc');
         const chartAnim = initCaseChart('caso-chart-anim');
+        const chart3d = initCaseChart('caso-chart-3d');
 
         if (!chartRaices || !chartInteg || !chartEdo || !chartMc || !chartAnim) {
-            throw new Error('No se pudieron inicializar los charts ECharts.');
+            throw new Error('No se pudieron inicializar los gráficos principales.');
         }
 
+        const surfaceRadius = caseAppNum(res, 'radio_superficie_m', 'radio_disco_m');
+        const rHornalla = caseAppNum(res, 'radio_hornalla_m');
+        const palette = getCasePalette(ui.palette);
+        const ringData = [];
+        const ringSteps = 96;
+        for (let i = 0; i <= ringSteps; i += 1) {
+            const theta = (2 * Math.PI * i) / ringSteps;
+            ringData.push([
+                rHornalla * Math.cos(theta),
+                rHornalla * Math.sin(theta),
+                radialTemperature(res, rHornalla),
+            ]);
+        }
         chartRaices.setOption({
             backgroundColor: 'transparent',
             tooltip: {
@@ -734,8 +881,8 @@
                 type: 'value',
                 name: 'x (m)',
                 nameTextStyle: { color: '#94a3b8', fontSize: 11 },
-                min: -0.9,
-                max: 0.9,
+                min: -surfaceRadius,
+                max: surfaceRadius,
                 axisLine: { lineStyle: { color: '#334155' } },
                 axisLabel: { color: '#94a3b8' },
                 splitLine: { lineStyle: { color: 'rgba(148,163,184,0.06)' } },
@@ -744,8 +891,8 @@
                 type: 'value',
                 name: 'y (m)',
                 nameTextStyle: { color: '#94a3b8', fontSize: 11 },
-                min: -0.9,
-                max: 0.9,
+                min: -surfaceRadius,
+                max: surfaceRadius,
                 axisLine: { lineStyle: { color: '#334155' } },
                 splitLine: { lineStyle: { color: 'rgba(148,163,184,0.08)' } },
                 axisLabel: { color: '#94a3b8' },
@@ -759,23 +906,36 @@
                 right: 8,
                 top: 'middle',
                 textStyle: { color: '#cbd5e1' },
-                inRange: { color: ['#1e3a5f', '#0d9488', '#22c55e', '#f59e0b', '#ef4444', '#fbbf24'] },
+                inRange: { color: palette },
             },
             series: [{
                 name: 'Mapa térmico',
                 type: 'heatmap',
-                data: res.visualizacion.heatmap_estatico,
+                data: ui.showContours
+                    ? simplifyHeatmapGrid(res.visualizacion.heatmap_estatico, ui.contourBands)
+                    : res.visualizacion.heatmap_estatico,
                 blurSize: 18,
                 pointSize: 5,
-                itemStyle: { opacity: 0.55 },
+                itemStyle: { opacity: 0.42 },
                 z: 1,
             }, {
                 name: 'Temperatura',
                 type: 'scatter',
                 data: res.visualizacion.nube_puntos,
-                symbolSize: 7,
-                itemStyle: { opacity: 0.85 },
+                symbolSize: 8,
+                itemStyle: {
+                    opacity: 0.96,
+                    borderColor: 'rgba(15,23,42,0.65)',
+                    borderWidth: 0.6,
+                },
                 emphasis: { scale: 1.8, itemStyle: { shadowBlur: 10, shadowColor: 'rgba(6,182,212,0.5)' } },
+                z: 2,
+            }, {
+                name: 'Borde hornalla',
+                type: 'line',
+                data: ringData,
+                showSymbol: false,
+                lineStyle: { color: '#fbbf24', width: 2, type: 'dashed' },
                 z: 2,
             }, {
                 name: 'Centro hornalla',
@@ -840,10 +1000,13 @@
                 },
                 emphasis: { scale: 1.6 },
             }],
-            markLine: rSafe ? {
+            markLine: {
                 silent: true,
-                data: [{ xAxis: rSafe, lineStyle: { color: '#22c55e', type: 'dashed', width: 2 } }],
-            } : undefined,
+                data: [
+                    { xAxis: rHornalla, lineStyle: { color: '#f59e0b', type: 'solid', width: 2 } },
+                    { xAxis: rSafe, lineStyle: { color: '#22c55e', type: 'dashed', width: 2 } },
+                ],
+            },
         });
 
         // ---- Potencia Térmica Integrada (barras coloreadas) ----
@@ -985,15 +1148,15 @@
                     top: 'middle',
                     calculable: true,
                     textStyle: { color: '#cbd5e1' },
-                    inRange: { color: ['#1e3a5f', '#0d9488', '#22c55e', '#f59e0b', '#ef4444', '#fbbf24'] },
+                    inRange: { color: palette },
                 },
                 grid: { left: 56, right: 24, top: 32, bottom: 72 },
                 xAxis: {
                     type: 'value',
                     name: 'x (m)',
                     nameTextStyle: { color: '#94a3b8', fontSize: 11 },
-                    min: -0.9,
-                    max: 0.9,
+                    min: -surfaceRadius,
+                    max: surfaceRadius,
                     axisLine: { lineStyle: { color: '#334155' } },
                     axisLabel: { color: '#94a3b8' },
                     splitLine: { lineStyle: { color: 'rgba(148,163,184,0.06)' } },
@@ -1002,8 +1165,8 @@
                     type: 'value',
                     name: 'y (m)',
                     nameTextStyle: { color: '#94a3b8', fontSize: 11 },
-                    min: -0.9,
-                    max: 0.9,
+                    min: -surfaceRadius,
+                    max: surfaceRadius,
                     axisLine: { lineStyle: { color: '#334155' } },
                     splitLine: { lineStyle: { color: 'rgba(148,163,184,0.06)' } },
                     axisLabel: { color: '#94a3b8' },
@@ -1018,12 +1181,104 @@
                 },
                 series: [{
                     type: 'heatmap',
-                    data: f.data,
+                    data: ui.showContours ? simplifyHeatmapGrid(f.data, ui.contourBands) : f.data,
                     blurSize: 18,
                     pointSize: 5,
                 }],
             })),
         });
+
+        // ---- Superficie térmica 3D ----
+        const has3D = !!(
+            chart3d
+            && typeof echarts === 'object'
+            && echarts.graphic
+            && Array.isArray(res.visualizacion?.heatmap_3d)
+        );
+        if (has3D) {
+            const points3d = res.visualizacion.heatmap_3d;
+            const xs3 = points3d.map((p) => p[0]);
+            const ys3 = points3d.map((p) => p[1]);
+            const zs3 = points3d.map((p) => p[2]);
+            const minX = Math.min(...xs3);
+            const maxX = Math.max(...xs3);
+            const minY = Math.min(...ys3);
+            const maxY = Math.max(...ys3);
+            const minZ = Math.min(...zs3);
+            const maxZ = Math.max(...zs3);
+
+            chart3d.setOption({
+                backgroundColor: 'transparent',
+                tooltip: {
+                    formatter: (p) => `x=${p.value[0].toFixed(3)} m<br/>y=${p.value[1].toFixed(3)} m<br/>T=${p.value[2].toFixed(1)} °C`,
+                },
+                visualMap: {
+                    min: minZ,
+                    max: maxZ,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: 8,
+                    textStyle: { color: '#cbd5e1' },
+                    inRange: { color: palette },
+                },
+                xAxis3D: {
+                    type: 'value',
+                    min: minX,
+                    max: maxX,
+                    name: 'x (m)',
+                    axisLabel: { color: '#94a3b8' },
+                    axisLine: { lineStyle: { color: '#475569' } },
+                },
+                yAxis3D: {
+                    type: 'value',
+                    min: minY,
+                    max: maxY,
+                    name: 'y (m)',
+                    axisLabel: { color: '#94a3b8' },
+                    axisLine: { lineStyle: { color: '#475569' } },
+                },
+                zAxis3D: {
+                    type: 'value',
+                    min: minZ,
+                    max: maxZ,
+                    name: 'Temperatura (°C)',
+                    axisLabel: { color: '#94a3b8' },
+                    axisLine: { lineStyle: { color: '#475569' } },
+                },
+                grid3D: {
+                    boxWidth: 120,
+                    boxDepth: 120,
+                    boxHeight: 70,
+                    viewControl: {
+                        alpha: 28,
+                        beta: 35,
+                        distance: 140,
+                        autoRotate: ui.autoRotate3d,
+                        autoRotateSpeed: 6,
+                    },
+                    light: {
+                        main: { intensity: 1.0, shadow: false },
+                        ambient: { intensity: 0.45 },
+                    },
+                },
+                series: [{
+                    type: 'scatter3D',
+                    data: points3d,
+                    symbolSize: 4.5,
+                    itemStyle: { opacity: 0.95 },
+                }],
+            });
+            const status3d = document.getElementById('caso-3d-status');
+            if (status3d) {
+                status3d.textContent = 'Vista 3D activa.';
+            }
+        } else {
+            const status3d = document.getElementById('caso-3d-status');
+            if (status3d) {
+                status3d.textContent = 'La vista 3D no está disponible en este navegador/cdn.';
+            }
+        }
 
         window.requestAnimationFrame(() => {
             Object.values(CASE_CHARTS).forEach(ch => ch && ch.resize());
@@ -1036,7 +1291,7 @@
         if (!el) return;
 
         const safe   = res.aplicacion.distancia_segura_m;
-        const safeT  = res.aplicacion.temperatura_segura_c;
+        const safeT  = caseAppNum(res, 'temperatura_segura_c');
         const nwIter = res.raices.newton_raphson.iteraciones;
         const biIter = res.raices.biseccion.iteraciones;
         const aiIter = res.raices.aitken.iteraciones;
@@ -1056,37 +1311,40 @@
 
         const intDiff = Math.abs(s13 - mcI);
         const intPct  = s13 !== 0 ? ((intDiff / Math.abs(s13)) * 100).toFixed(2) : '—';
+        const rHornalla = caseAppNum(res, 'radio_hornalla_m');
+        const tFuente = caseAppNum(res, 'temp_fuente_c', 'temp_objetivo_sarten_c');
+        const potencia = caseAppNum(res, 'potencia_hornalla_kw', 'potencia_hornalla');
 
         const items = [
             {
                 icon: '🎯',
                 title: 'Zona de seguridad',
-                text: `A partir de los <strong>${nwIter}</strong> iteraciones de Newton-Raphson se determinó que la distancia segura es de <strong>${safe.toFixed(3)} m</strong> (donde T ≤ ${safeT.toFixed(0)} °C). Bisección llegó al mismo resultado en <strong>${biIter}</strong> iteraciones y Aitken en <strong>${aiIter}</strong>. Esto muestra cómo Newton converge mucho más rápido gracias a su orden cuadrático, mientras que Bisección es más lento pero garantiza convergencia.`,
+                text: `Con radio de hornalla <strong>${rHornalla.toFixed(2)} m</strong>, potencia <strong>${potencia.toFixed(2)} kW</strong> y temperatura de fuente <strong>${tFuente.toFixed(0)} °C</strong>, la zona segura se ubica alrededor de <strong>${safe.toFixed(3)} m</strong> (meta: T <= ${safeT.toFixed(0)} °C).`,
             },
             {
                 icon: '📏',
                 title: 'Interpolación y gradiente',
-                text: `Con apenas unos pocos sensores simulados se logró reconstruir el perfil térmico continuo mediante Lagrange. El gradiente calculado por diferencia central en r = 0.30 m fue de <strong>${res.interpolacion.derivada_t3.toFixed(3)} °C/m</strong>, lo que indica la tasa de caída de temperatura a esa distancia. Cuanto más negativo, más rápido se enfría el entorno al alejarse de la hornalla.`,
+                text: `Con pocos sensores se reconstruyó el perfil completo de calor. El gradiente en r = 0.30 m fue <strong>${res.interpolacion.derivada_t3.toFixed(3)} °C/m</strong>: cuanto más negativo, más rápido cae la temperatura al alejarse.`,
             },
             {
                 icon: '⚡',
                 title: 'Potencia térmica integrada',
-                text: `Los 5 métodos determinísticos arrojaron resultados muy similares (Simpson 1/3 = <strong>${s13.toFixed(4)}</strong>, Trapecio = <strong>${trap.toFixed(4)}</strong>), lo que valida la consistencia numérica. Las pequeñas diferencias se deben al orden de precisión de cada método: Simpson es O(h⁴) mientras que Trapecio es solo O(h²).`,
+                text: `Los métodos dieron valores parecidos (Simpson 1/3 = <strong>${s13.toFixed(4)}</strong>, Trapecio = <strong>${trap.toFixed(4)}</strong>). En la práctica, eso indica que la estimación de energía es estable.`,
             },
             {
                 icon: '🎲',
                 title: 'Monte Carlo vs. determinístico',
-                text: `La estimación Monte Carlo fue <strong>${mcI.toFixed(4)}</strong> con un intervalo de confianza al 95% de [${mcLo.toFixed(3)}, ${mcHi.toFixed(3)}]. La diferencia contra Simpson 1/3 fue de apenas un <strong>${intPct}%</strong>. Esto demuestra que Monte Carlo, aunque estocástico, converge al mismo valor — su potencia real aparece en dimensiones altas donde los métodos clásicos dejan de ser viables.`,
+                text: `Monte Carlo estimó <strong>${mcI.toFixed(4)}</strong> con rango probable [${mcLo.toFixed(3)}, ${mcHi.toFixed(3)}]. La diferencia frente a Simpson fue de <strong>${intPct}%</strong>, o sea que ambos cuentan una historia parecida.`,
             },
             {
                 icon: '🔥',
                 title: 'Calentamiento de sartén (EDO)',
-                text: `RK4 predijo una temperatura final de <strong>${rk4F.toFixed(2)} °C</strong> con un error de apenas <strong>${rk4E.toExponential(2)}</strong> respecto a la solución exacta. Euler, en cambio, llegó a <strong>${euF.toFixed(2)} °C</strong> — se nota cómo un método de orden 1 acumula más error paso a paso. Heun queda en el medio, demostrando que promediar predictor y corrector ya mejora mucho la precisión.`,
+                text: `RK4 terminó en <strong>${rk4F.toFixed(2)} °C</strong> con error muy chico (<strong>${rk4E.toExponential(2)}</strong>). Euler quedó en <strong>${euF.toFixed(2)} °C</strong>, mostrando una diferencia mayor.`,
             },
             {
                 icon: '🥧',
                 title: 'Estimación de π',
-                text: `Como test adicional, Monte Carlo estimó π ≈ <strong>${piEst.toFixed(6)}</strong>, con un error absoluto de <strong>${piErr.toFixed(5)}</strong>. Es un ejercicio clásico que demuestra cómo la aleatoriedad, con suficientes muestras, puede aproximar constantes matemáticas con sorprendente precisión.`,
+                text: `Como control de calidad del muestreo, Monte Carlo estimó π ≈ <strong>${piEst.toFixed(6)}</strong> con error <strong>${piErr.toFixed(5)}</strong>.`,
             },
         ];
 
@@ -1105,12 +1363,10 @@
             <div class="conclusion-veredicto">
                 <span class="veredicto-label">VEREDICTO FINAL</span>
                 <p class="veredicto-text">
-                    El escenario integrado demuestra que <strong>no existe un único "mejor método"</strong>:
-                    Newton-Raphson es imbatible en velocidad para raíces, Simpson domina en integración determinística,
-                    Monte Carlo aporta incertidumbre probabilística indispensable en sistemas reales,
-                    y RK4 es el estándar de oro para EDOs cuando se busca precisión sin costo excesivo.
-                    La clave está en <strong>elegir la herramienta correcta para cada sub-problema</strong>
-                    y saber interpretar los resultados en contexto.
+                    En simple: cuando subís potencia o temperatura de fuente, el calor se expande más;
+                    si achicás radio de hornalla o potencia, se concentra menos.
+                    Lo importante es que el panel te deja ver rápido
+                    <strong>dónde está la zona segura y cómo cambia al mover parámetros</strong>.
                 </p>
             </div>
         `;
@@ -1122,6 +1378,59 @@
         Object.values(CASE_CHARTS).forEach(ch => ch && ch.resize());
     });
 
+    function getCaseInputValue(id, fallback = '') {
+        const el = document.getElementById(id);
+        if (!el) return fallback;
+        return (el.value ?? '').toString();
+    }
+
+    function getCaseInputNumber(id, fallback = NaN) {
+        const raw = getCaseInputValue(id, '');
+        if (raw === '') return fallback;
+        const num = Number.parseFloat(raw);
+        return Number.isFinite(num) ? num : fallback;
+    }
+
+    const CASE_GRAPH_HELP = {
+        'caso-chart-raices': 'Nube térmica: cada punto representa una medición simulada en una posición (x, y). El color indica temperatura: más cálido = más caliente.',
+        'caso-chart-integracion': 'Perfil radial: muestra cómo cambia la temperatura cuando te alejás del centro de la hornalla. Sensores = puntos de medición puntuales usados para reconstruir la curva.',
+        'caso-chart-edo': 'Comparación de métodos de integración para estimar la energía total. Si las barras son parecidas, el cálculo es consistente.',
+        'caso-chart-mc': 'Evolución temporal de la temperatura de la sartén. Permite comparar qué método numérico sigue mejor la curva esperada.',
+        'caso-chart-anim': 'Mapa animado del encendido: muestra cómo el calor se expande con el tiempo desde el centro de la hornalla.',
+    };
+
+    function bindCaseHelpPopups() {
+        $$('.chart-help-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const target = btn.dataset.helpTarget;
+                const text = CASE_GRAPH_HELP[target] || 'Descripción no disponible.';
+                toast(text, 'info');
+            });
+        });
+    }
+
+    function bindCaseAdvancedControls() {
+        const palette = document.getElementById('caso-palette');
+        const contours = document.getElementById('caso-contours');
+        const bands = document.getElementById('caso-contour-bands');
+        const autoRotate = document.getElementById('caso-auto-rotate');
+
+        const updateContext = () => {
+            CASE_RENDER_CONTEXT = {
+                ...CASE_RENDER_CONTEXT,
+                palette: palette?.value || 'default',
+                showContours: !!contours?.checked,
+                contourBands: Number.parseInt(bands?.value || '12', 10),
+                autoRotate3d: !!autoRotate?.checked,
+            };
+        };
+
+        [palette, contours, bands, autoRotate].forEach((el) => {
+            if (el) el.addEventListener('change', updateContext);
+        });
+        updateContext();
+    }
+
     on('#btn-caso-practico', 'click', async () => {
         const btn = $('#btn-caso-practico');
         if (!btn) return;
@@ -1129,17 +1438,43 @@
             setLoading(btn, true);
             $('#status-text').textContent = 'Ejecutando escenario…';
 
-            const intensidad = $('#caso-intensidad').value;
-            const seed = $('#caso-seed').value.trim() || '42';
+            const intensidad = getCaseInputValue('caso-intensidad', 'pro');
+            const seed = getCaseInputValue('caso-seed', '42').trim() || '42';
+            const radioHornallaCm = getCaseInputNumber('caso-radio-hornalla', 11.0);
+            const ambiente = getCaseInputNumber('caso-ambiente', 24.0);
+            const tempSegura = getCaseInputNumber('caso-temperatura-segura', 60.0);
+            const potencia = getCaseInputNumber('caso-potencia', 320.0);
+            const alpha = getCaseInputNumber('caso-alpha', 3.2);
+            const perdidaAire = getCaseInputNumber('caso-perdida-aire', 10.0);
+            const ruidoSensor = getCaseInputNumber('caso-ruido-sensor', 4.0);
+
+            const invalid = [radioHornallaCm, ambiente, tempSegura, potencia, alpha, perdidaAire, ruidoSensor]
+                .some(v => !Number.isFinite(v));
+            if (invalid) {
+                throw new Error('Revisá los parámetros: hay un valor vacío o inválido.');
+            }
+            if (radioHornallaCm <= 0) {
+                throw new Error('El radio de la hornalla debe ser mayor que 0 cm.');
+            }
+            const radioHornalla = radioHornallaCm / 100.0;
+
             const profile = {
                 base: { mc_n: 6000, pi_n: 8000, cloud_n: 900, pasos: 12, h: 0.5 },
                 pro: { mc_n: 20000, pi_n: 25000, cloud_n: 1800, pasos: 20, h: 0.3 },
                 extremo: { mc_n: 50000, pi_n: 60000, cloud_n: 3000, pasos: 30, h: 0.2 },
-            }[intensidad];
+            }[intensidad] || { mc_n: 20000, pi_n: 25000, cloud_n: 1800, pasos: 20, h: 0.3 };
 
             const res = await API.casoPracticoIntegrado({
                 ...profile,
                 seed,
+                radio_hornalla_m: radioHornalla,
+                ambiente_c: ambiente,
+                temperatura_segura_c: tempSegura,
+                potencia_hornalla: potencia,
+                rapidez_disipacion: alpha,
+                perdida_lineal: perdidaAire,
+                ruido_sensor: ruidoSensor,
+                intensidad,
             });
             const area = $('#caso-resultado');
             area.style.display = '';
@@ -1152,6 +1487,8 @@
             );
 
             buildCaseKpis(res);
+            buildScenarioBadges(res);
+            buildSimpleCaseStory(res);
 
             const resumenRows = [
                 { bloque: 'Raíces · Distancia segura (Newton)', valor: res.raices.newton_raphson.aproximacion, detalle: `iter=${res.raices.newton_raphson.iteraciones}` },
@@ -1159,14 +1496,14 @@
                 { bloque: 'Raíces · Aitken', valor: res.raices.aitken.aproximacion, detalle: `iter=${res.raices.aitken.iteraciones}` },
                 { bloque: 'Interpolación · T(r=0.38m)', valor: res.interpolacion.valor_interpolado, detalle: 'lectura intermedia' },
                 { bloque: 'Gradiente radial · dT/dr (r=0.30m)', valor: res.interpolacion.derivada_t3, detalle: 'diferencia central' },
-                { bloque: 'Integración · Simpson 1/3', valor: res.integracion.resultados.simpson13, detalle: '[0, 0.8] m' },
+                { bloque: 'Integración · Simpson 1/3', valor: res.integracion.resultados.simpson13, detalle: `[0, ${caseAppNum(res, 'radio_superficie_m', 'radio_disco_m').toFixed(2)}] m` },
                 { bloque: 'Monte Carlo · Integral', valor: res.montecarlo.integral.estimacion, detalle: `IC95% [${res.montecarlo.integral.ic_bajo.toFixed(3)}, ${res.montecarlo.integral.ic_alto.toFixed(3)}]` },
                 { bloque: 'Monte Carlo · Pi', valor: res.montecarlo.pi.estimacion, detalle: `IC95% [${res.montecarlo.pi.ic_bajo.toFixed(3)}, ${res.montecarlo.pi.ic_alto.toFixed(3)}]` },
                 { bloque: 'EDO · Sartén final RK4', valor: res.edo.metodos.rk4.y_final, detalle: `error=${res.edo.metodos.rk4.error_final.toExponential(3)}` },
             ];
             $('#caso-resumen').innerHTML = renderTable(resumenRows, ['bloque', 'valor', 'detalle']);
 
-            renderCaseCharts(res);
+            renderCaseCharts(res, CASE_RENDER_CONTEXT);
             buildCaseConclusions(res);
 
             toast('Caso práctico ejecutado ✓', 'success');
@@ -1191,6 +1528,8 @@
         if (typeof renderMathInElement === 'function') {
             TheoryPanel.update('raices');
         }
+        bindCaseHelpPopups();
+        bindCaseAdvancedControls();
     });
 
 })();
