@@ -1189,7 +1189,12 @@
         });
 
         // ---- Superficie térmica 3D ----
-        const has3D = !!(chart3d && typeof echarts === 'object' && (echarts as any).graphic && Array.isArray(res.visualizacion?.heatmap_3d));
+        const has3D = !!(
+            chart3d
+            && typeof echarts === 'object'
+            && echarts.graphic
+            && Array.isArray(res.visualizacion?.heatmap_3d)
+        );
         if (has3D) {
             const points3d = res.visualizacion.heatmap_3d;
             const xs3 = points3d.map((p) => p[0]);
