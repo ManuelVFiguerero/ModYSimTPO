@@ -135,32 +135,36 @@ const TheoryPanel = (() => {
         `,
 
         edo: `
-            <h4>Ecuaciones Diferenciales Ordinarias</h4>
-            <p>Resuelven un PVI: <strong>y' = f(t, y),   y(t₀) = y₀</strong>.</p>
+            <h4>Ecuaciones diferenciales (explicado simple)</h4>
+            <p>Acá simulamos cómo cambia algo con el tiempo, por ejemplo una población, una velocidad o una temperatura.</p>
+            <p>La idea base es: <strong>y' = f(t, y)</strong> con un valor inicial <strong>y(t₀) = y₀</strong>.</p>
+
+            <h4>Propagación del calor (modelo de enfriamiento)</h4>
+            <p>Si elegís el escenario de calor, el sistema muestra cómo un objeto caliente o frío se va acercando a la temperatura ambiente.</p>
+            <div class="formula-block">
+                $$T'(t) = -k\\,(T - T_{amb})$$
+            </div>
+            <div class="theory-note">
+                <strong>Lectura rápida:</strong> cuando la diferencia <em>|T - T_amb|</em> baja, significa que el objeto se está equilibrando con el ambiente.
+            </div>
 
             <h4>Método de Euler</h4>
             <div class="formula-block">
                 $$y_{n+1} = y_n + h \\cdot f(t_n, y_n)$$
             </div>
-            <div class="theory-note">Orden 1. Simple pero acumula error rápidamente.</div>
+            <p>Es el más directo: avanza paso a paso. Es fácil de entender, pero puede tener más error.</p>
 
-            <h4>Método de Heun (Euler Mejorado)</h4>
+            <h4>Método de Heun</h4>
             <div class="formula-block">
                 $$y_{n+1} = y_n + \\frac{h}{2}\\left[f(t_n, y_n) + f(t_{n+1}, \\tilde{y}_{n+1})\\right]$$
             </div>
-            <p>Donde ỹ<sub>n+1</sub> = y<sub>n</sub> + h·f(t<sub>n</sub>, y<sub>n</sub>) es el predictor de Euler.</p>
+            <p>Hace una corrección del paso de Euler y por eso suele mejorar bastante el resultado.</p>
 
-            <h4>Runge-Kutta de Orden 4 (RK4)</h4>
-            <p>El método clásico de orden 4, con excelente balance entre precisión y costo computacional.</p>
+            <h4>Runge-Kutta 4 (RK4)</h4>
             <div class="formula-block">
                 $$y_{n+1} = y_n + \\frac{h}{6}(k_1 + 2k_2 + 2k_3 + k_4)$$
             </div>
-            <ul>
-                <li>k₁ = f(tₙ, yₙ)</li>
-                <li>k₂ = f(tₙ + h/2, yₙ + h·k₁/2)</li>
-                <li>k₃ = f(tₙ + h/2, yₙ + h·k₂/2)</li>
-                <li>k₄ = f(tₙ + h, yₙ + h·k₃)</li>
-            </ul>
+            <p>Combina varias estimaciones por paso. Normalmente da resultados muy buenos sin complicar la carga de datos.</p>
         `,
     };
 

@@ -550,16 +550,63 @@
 
     // ==================== EDO ====================
 
+    const edoScenario = $('#edo-escenario');
+    const edoGeneralFields = $('#edo-general-fields');
+    const edoHeatFields = $('#edo-calor-fields');
+    const edoScenarioHelp = $('#edo-scenario-help');
+    const edoHeatSummary = $('#edo-calor-resumen');
+
+    function buildHeatModelExpression() {
+        const ambient = $('#edo-amb').value.trim() || '20';
+        const k = $('#edo-k').value.trim() || '0.3';
+        return `-(${k})*(y-(${ambient}))`;
+    }
+
+    function buildHeatExactExpression(y0, t0) {
+        const ambient = $('#edo-amb').value.trim() || '20';
+        const k = $('#edo-k').value.trim() || '0.3';
+        return `(${ambient}) + ((${y0})-(${ambient}))*exp(-(${k})*(t-(${t0})))`;
+    }
+
+    function isHeatScenario() {
+        return edoScenario?.value === 'calor';
+    }
+
+    function updateEdoScenarioUI() {
+        const heatMode = isHeatScenario();
+        edoGeneralFields.style.display = heatMode ? 'none' : '';
+        edoHeatFields.style.display = heatMode ? '' : 'none';
+        edoHeatSummary.style.display = 'none';
+        edoHeatSummary.innerHTML = '';
+
+        if (heatMode) {
+            edoScenarioHelp.innerHTML = 'Caso guiado: simulamos cómo una temperatura inicial se acerca a la del ambiente con el paso del tiempo.';
+        } else {
+            edoScenarioHelp.innerHTML = "Escribí la ecuación en formato <strong>y' = f(t, y)</strong> para simular cualquier proceso.";
+        }
+    }
+
+    if (edoScenario) {
+        edoScenario.addEventListener('change', updateEdoScenarioUI);
+        updateEdoScenarioUI();
+    }
+
     $('#btn-edo').addEventListener('click', async () => {
         const btn = $('#btn-edo');
         const metodo = $('#edo-metodo').value;
+        const heatMode = isHeatScenario();
 
         try {
+            edoHeatSummary.style.display = 'none';
+            edoHeatSummary.innerHTML = '';
+
+            const t0 = $('#edo-t0').value;
+            const y0 = $('#edo-y0').value;
             const payload = {
-                ode_expr: $('#edo-expr').value,
-                solucion_exacta: $('#edo-exacta').value.trim() || null,
-                t0: $('#edo-t0').value,
-                y0: $('#edo-y0').value,
+                ode_expr: heatMode ? buildHeatModelExpression() : $('#edo-expr').value,
+                solucion_exacta: heatMode ? buildHeatExactExpression(y0, t0) : ($('#edo-exacta').value.trim() || null),
+                t0,
+                y0,
                 h: $('#edo-h').value,
                 pasos: $('#edo-pasos').value,
             };
@@ -573,8 +620,10 @@
             area.style.display = '';
 
             const lastStep = res.pasos[res.pasos.length - 1];
-            showMessage($('#edo-msg'), res.mensaje, true,
-                `y(${lastStep.t.toFixed(2)}) ≈ ${lastStep.y.toFixed(10)}`);
+            const finalLabel = heatMode
+                ? `Temperatura estimada en t=${lastStep.t.toFixed(2)}: ${lastStep.y.toFixed(2)} °C`
+                : `y(${lastStep.t.toFixed(2)}) ≈ ${lastStep.y.toFixed(10)}`;
+            showMessage($('#edo-msg'), res.mensaje, true, finalLabel);
 
             // Table
             const hasExact = res.pasos.some(p => p.y_exacto != null);
@@ -586,11 +635,47 @@
                 x: res.pasos.map(p => p.t),
                 y: res.pasos.map(p => p.y),
                 mode: 'lines+markers',
-                name: 'Aproximación numérica',
-                line: { color: '#06b6d4', width: 2.5, shape: 'spline' },
-                marker: { size: 5, color: '#06b6d4' },
+                name: heatMode ? 'Temperatura del objeto' : 'Aproximación numérica',
+                line: { color: '#06b6d4', width: 3, shape: 'spline' },
+                marker: { size: 6, color: '#06b6d4' },
             }];
-            if (hasExact) {
+            if (heatMode) {
+                const ambient = Number.parseFloat($('#edo-amb').value);
+                if (Number.isFinite(ambient)) {
+                    const ts = res.pasos.map(p => p.t);
+                    const ys = res.pasos.map(p => p.y);
+                    const delta = ys.map(v => Math.abs(v - ambient));
+                    traces.push({
+                        x: ts,
+                        y: ts.map(() => ambient),
+                        mode: 'lines',
+                        name: 'Temperatura ambiente',
+                        line: { color: '#22c55e', width: 2, dash: 'dash' },
+                    });
+                    traces.push({
+                        x: ts,
+                        y: delta,
+                        mode: 'lines+markers',
+                        name: 'Distancia al ambiente',
+                        line: { color: '#f59e0b', width: 2 },
+                        marker: { size: 5, color: '#f59e0b' },
+                        yaxis: 'y2',
+                    });
+
+                    const start = ys[0];
+                    const end = ys[ys.length - 1];
+                    edoHeatSummary.style.display = '';
+                    edoHeatSummary.innerHTML = `
+                        <h4>Lectura rápida del resultado</h4>
+                        <ul>
+                            <li>La temperatura empezó en <strong>${start.toFixed(2)} °C</strong>.</li>
+                            <li>El ambiente está en <strong>${ambient.toFixed(2)} °C</strong>.</li>
+                            <li>Al final de la simulación llegó a <strong>${end.toFixed(2)} °C</strong>.</li>
+                            <li>Quedó a <strong>${Math.abs(end - ambient).toFixed(2)} °C</strong> del ambiente.</li>
+                        </ul>
+                    `;
+                }
+            } else if (hasExact) {
                 traces.push({
                     x: res.pasos.map(p => p.t),
                     y: res.pasos.map(p => p.y_exacto),
@@ -612,11 +697,32 @@
             }
 
             const layout = plotlyLayout({
-                title: { text: `Trayectoria – ${metodo.toUpperCase()}`, font: { size: 15, color: '#f0f0f5' } },
+                title: {
+                    text: heatMode ? 'Propagación del calor (modelo simple)' : `Trayectoria – ${metodo.toUpperCase()}`,
+                    font: { size: 15, color: '#f0f0f5' },
+                },
                 xaxis: { title: { text: 't' } },
-                yaxis: { title: { text: 'y(t)' } },
+                yaxis: { title: { text: heatMode ? 'Temperatura (°C)' : 'y(t)' } },
             });
-            if (hasExact) {
+            if (heatMode) {
+                layout.yaxis2 = {
+                    title: { text: '|T - Ambiente|', font: { size: 11, color: '#f59e0b' } },
+                    overlaying: 'y',
+                    side: 'right',
+                    gridcolor: 'rgba(245,158,11,0.05)',
+                    tickfont: { size: 10, color: '#f59e0b' },
+                };
+                layout.annotations = [{
+                    x: 1,
+                    y: 1.08,
+                    xref: 'paper',
+                    yref: 'paper',
+                    text: 'Cuando la línea naranja baja, el objeto se acerca al ambiente.',
+                    showarrow: false,
+                    xanchor: 'right',
+                    font: { size: 11, color: '#f59e0b' },
+                }];
+            } else if (hasExact) {
                 layout.yaxis2 = {
                     title: { text: 'Error', font: { size: 11, color: '#f59e0b' } },
                     overlaying: 'y', side: 'right',
@@ -633,6 +739,8 @@
             const area = $('#edo-resultado');
             area.style.display = '';
             showMessage($('#edo-msg'), err.message, false);
+            edoHeatSummary.style.display = 'none';
+            edoHeatSummary.innerHTML = '';
         } finally {
             setLoading(btn, false);
             $('#status-text').textContent = 'Listo';

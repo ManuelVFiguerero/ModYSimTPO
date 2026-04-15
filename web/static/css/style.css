@@ -1050,6 +1050,43 @@ body {
 }
 
 /* ============================================================
+   EDO - Escenario de calor (apoyos visuales)
+   ============================================================ */
+.scenario-note {
+    background: rgba(6, 182, 212, 0.08);
+    border: 1px solid rgba(6, 182, 212, 0.18);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 0.9rem;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    margin-bottom: 1rem;
+}
+
+.heat-summary {
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 0.95rem 1rem;
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+}
+
+.heat-summary h4 {
+    color: #4ade80;
+    font-size: 0.9rem;
+    margin-bottom: 0.45rem;
+}
+
+.heat-summary ul {
+    margin: 0;
+    padding-left: 1rem;
+}
+
+.heat-summary li {
+    margin-bottom: 0.2rem;
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 1100px) {
