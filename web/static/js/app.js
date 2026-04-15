@@ -690,6 +690,7 @@
 
     function buildCaseKpis(res) {
         const rf = caseAppNum(res, 'radio_hornalla_m');
+        const rfCm = rf * 100.0;
         const rs = caseAppNum(res, 'radio_superficie_m', 'radio_disco_m');
         const areaRatio = rs > 0 ? (rf * rf) / (rs * rs) : 0;
         const cobertura = Math.max(0, Math.min(100, areaRatio * 100));
@@ -704,7 +705,7 @@
             {
                 title: 'Potencia',
                 value: `${potencia.toFixed(2)} kW`,
-                note: 'fuerza de la hornalla',
+                note: `radio: ${rfCm.toFixed(1)} cm`,
             },
             {
                 title: 'Cobertura',
@@ -777,9 +778,10 @@
         if (!el) return;
         const buildBadge = (label, value) => `<span class="caso-badge"><strong>${label}:</strong> ${value}</span>`;
         const radioSuperficie = caseAppNum(res, 'radio_superficie_m', 'radio_disco_m');
+        const radioHornallaCm = caseAppNum(res, 'radio_hornalla_cm', 'radio_hornalla_m') * (res.aplicacion.radio_hornalla_cm ? 1 : 100.0);
         const tempFuente = caseAppNum(res, 'temp_fuente_c', 'temp_objetivo_sarten_c');
         el.innerHTML = [
-            buildBadge('Radio hornalla', `${res.aplicacion.radio_hornalla_m.toFixed(2)} m`),
+            buildBadge('Radio hornalla', `${radioHornallaCm.toFixed(1)} cm`),
             buildBadge('Superficie analizada', `${radioSuperficie.toFixed(2)} m`),
             buildBadge('Temperatura fuente', `${tempFuente.toFixed(1)} °C`),
             buildBadge('Ambiente', `${res.aplicacion.ambiente_c.toFixed(1)} °C`),
@@ -1228,7 +1230,7 @@
 
             const intensidad = getCaseInputValue('caso-intensidad', 'pro');
             const seed = getCaseInputValue('caso-seed', '42').trim() || '42';
-            const radioHornalla = getCaseInputNumber('caso-radio-hornalla', 0.11);
+            const radioHornallaCm = getCaseInputNumber('caso-radio-hornalla', 11.0);
             const ambiente = getCaseInputNumber('caso-ambiente', 24.0);
             const tempSegura = getCaseInputNumber('caso-temperatura-segura', 60.0);
             const potencia = getCaseInputNumber('caso-potencia', 320.0);
@@ -1236,11 +1238,15 @@
             const perdidaAire = getCaseInputNumber('caso-perdida-aire', 10.0);
             const ruidoSensor = getCaseInputNumber('caso-ruido-sensor', 4.0);
 
-            const invalid = [radioHornalla, ambiente, tempSegura, potencia, alpha, perdidaAire, ruidoSensor]
+            const invalid = [radioHornallaCm, ambiente, tempSegura, potencia, alpha, perdidaAire, ruidoSensor]
                 .some(v => !Number.isFinite(v));
             if (invalid) {
                 throw new Error('Revisá los parámetros: hay un valor vacío o inválido.');
             }
+            if (radioHornallaCm <= 0) {
+                throw new Error('El radio de la hornalla debe ser mayor que 0 cm.');
+            }
+            const radioHornalla = radioHornallaCm / 100.0;
 
             const profile = {
                 base: { mc_n: 6000, pi_n: 8000, cloud_n: 900, pasos: 12, h: 0.5 },

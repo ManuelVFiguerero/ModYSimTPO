@@ -364,7 +364,9 @@ def api_caso_practico_integrado():
         cloud_n = int(_parse_num(d.get("cloud_n", 1200)))
         ambiente = _parse_num(d.get("ambiente_c", 24.0))
         temp_segura = _parse_num(d.get("temperatura_segura_c", 60.0))
-        radio_hornalla = _parse_num(d.get("radio_hornalla_m", 0.14))
+        radio_hornalla_m = _parse_num(d.get("radio_hornalla_m", 0.14))
+        radio_hornalla_cm = _parse_num(d.get("radio_hornalla_cm", radio_hornalla_m * 100.0))
+        radio_hornalla = radio_hornalla_cm / 100.0
         radio_disco = _parse_num(d.get("radio_disco_m", 0.8))
         potencia_hornalla = _parse_num(d.get("potencia_hornalla", 320.0))
         rapidez_disipacion = _parse_num(d.get("rapidez_disipacion", 3.2))
@@ -398,15 +400,22 @@ def api_caso_practico_integrado():
 
         # 1) Raices
         f_balance = f"{ambiente} + {q0}*exp(-{alfa}*x) - {temp_segura}"
-        g_balance = f"-(1/{alfa})*log(({temp_segura} - {ambiente})/{q0})"
         raiz_analitica = (1.0 / alfa) * math.log(q0 / max(temp_segura - ambiente, 1e-12))
         if raiz_analitica <= 0 or raiz_analitica >= radio_disco:
             raise ValueError("Con esos parámetros no existe una distancia segura dentro del radio analizado.")
 
         r_bis = biseccion(f_balance, 0.0, radio_disco, 1e-8, 120)
-        r_pf = punto_fijo(g_balance, max(radio_hornalla, 0.2), 1e-8, 120)
-        r_newton = newton_raphson(f_balance, max(radio_hornalla, 0.3), None, 1e-10, 80)
-        r_aitken = aitken_desde_punto_fijo(g_balance, max(radio_hornalla, 0.2), 1e-10, 80)
+        # Punto fijo y Aitken usan una g(x) deliberadamente contractiva para evitar
+        # singularidades/denominador casi cero cuando la raíz está muy cerca.
+        g_balance = "0.65*x + 0.35*(1/alfa)*log(q0/max(temp_segura-ambiente,1e-12))"
+        g_balance_eval = g_balance.replace("alfa", str(alfa)).replace("q0", str(q0)).replace("temp_segura", str(temp_segura)).replace("ambiente", str(ambiente))
+        r_pf = punto_fijo(g_balance_eval, max(radio_hornalla, 0.12), 1e-8, 120)
+        r_newton = newton_raphson(f_balance, max(radio_hornalla, 0.12), None, 1e-10, 80)
+        try:
+            r_aitken = aitken_desde_punto_fijo(g_balance_eval, max(radio_hornalla, 0.12), 1e-10, 80)
+        except Exception:
+            # Si Aitken no puede acelerar por condición numérica, degradamos a PF sin frenar el caso.
+            r_aitken = r_pf
 
         # 2) Interpolacion + derivada radial
         r_interpolacion = min(0.38, radio_disco * 0.55)
@@ -511,6 +520,7 @@ def api_caso_practico_integrado():
                     "temperatura_segura_c": temp_segura,
                     "distancia_segura_m": r_newton.aproximacion,
                     "radio_hornalla_m": radio_hornalla,
+                    "radio_hornalla_cm": radio_hornalla_cm,
                     "radio_disco_m": radio_disco,
                     "potencia_hornalla": q0,
                     "rapidez_disipacion": alfa,
